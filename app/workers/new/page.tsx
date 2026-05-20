@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation"
 import { getWorkerTemplates, createWorker, type WorkerTemplate } from "@/lib/actions/workers"
-import { getConnections, PROVIDER_CATALOG } from "@/lib/actions/connections"
+import { getConnections } from "@/lib/actions/connections"
+import { PROVIDER_CATALOG } from "@/lib/connections-catalog"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
