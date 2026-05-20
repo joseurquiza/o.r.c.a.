@@ -9,6 +9,9 @@ import {
   X,
   Inbox,
   Plug,
+  Store,
+  Upload,
+  ShieldCheck,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
@@ -36,6 +39,21 @@ const navigationItems = [
     title: "Connections",
     url: "/connections",
     icon: Plug,
+  },
+  {
+    title: "Store",
+    url: "/store",
+    icon: Store,
+  },
+  {
+    title: "Submit App",
+    url: "/creators",
+    icon: Upload,
+  },
+  {
+    title: "Review Queue",
+    url: "/review",
+    icon: ShieldCheck,
   },
   {
     title: "Settings",
