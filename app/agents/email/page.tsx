@@ -13,6 +13,7 @@ import {
   runEmailAnalysis,
   disconnectEmailAgent,
 } from "@/lib/actions/email-agent"
+import { ScheduleCard } from "@/components/schedule-card"
 
 interface EmailAgent {
   id: string
@@ -211,6 +212,8 @@ export default function EmailAgentPage() {
               </div>
             </CardContent>
           </Card>
+
+          <ScheduleCard agentType="email" agentRef={activeAgent.id} />
 
           {latestSummary && (
             <>

@@ -1,19 +1,11 @@
 "use client"
 
 import {
-  LayoutDashboardIcon as Dashboard,
-  Plus,
+  Home,
   Settings,
-  FileText,
-  Zap,
   LogOut,
   Menu,
-  AlertTriangle,
-  LinkIcon,
-  Monitor,
-  Download,
-  Users,
-  Mail,
+  Bot,
   X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -24,64 +16,14 @@ import { OrcaBotIcon } from "@/components/orca-bot-icon"
 
 const navigationItems = [
   {
-    title: "Dashboard",
+    title: "Home",
     url: "/",
-    icon: Dashboard,
+    icon: Home,
   },
   {
-    title: "Create Agent",
-    url: "/create-agent",
-    icon: Plus,
-  },
-  {
-    title: "Remote Agents",
-    url: "/agents/remote",
-    icon: Users,
-  },
-  {
-    title: "Email Agent",
-    url: "/agents/email",
-    icon: Mail,
-  },
-  {
-    title: "Remote Control",
-    url: "/remote-control",
-    icon: Monitor,
-  },
-  {
-    title: "Download Extension",
-    url: "/extension",
-    icon: Download,
-  },
-  {
-    title: "Simple OAuth",
-    url: "/simple-oauth",
-    icon: LinkIcon,
-  },
-  {
-    title: "API Integrations",
-    url: "/integrations",
-    icon: Zap,
-  },
-  {
-    title: "Setup Guide",
-    url: "/setup-guide",
-    icon: FileText,
-  },
-  {
-    title: "Test OAuth",
-    url: "/test-oauth",
-    icon: Settings,
-  },
-  {
-    title: "Debug OAuth",
-    url: "/debug-oauth",
-    icon: AlertTriangle,
-  },
-  {
-    title: "Logs",
-    url: "/logs",
-    icon: FileText,
+    title: "Agents",
+    url: "/agents",
+    icon: Bot,
   },
   {
     title: "Settings",
@@ -170,7 +112,7 @@ export function AppSidebar() {
               {/* Text below the icon */}
               <div className="text-center">
                 <h1 className="text-lg font-bold">ORCA</h1>
-                <p className="text-xs text-gray-500">Omni Remote Control Assistant</p>
+                <p className="text-xs text-gray-500">Your AI Chief of Staff</p>
               </div>
             </div>
           )}
