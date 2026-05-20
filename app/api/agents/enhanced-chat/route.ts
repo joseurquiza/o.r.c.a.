@@ -1,101 +1,82 @@
-import { streamText, generateObject } from "ai"
-import { openai } from "@ai-sdk/openai"
+import { streamText, generateText, Output, tool } from "ai"
 import { z } from "zod"
 
-// Enhanced AI SDK usage with structured outputs
+// Enhanced AI SDK usage with structured outputs (AI SDK v6)
 export async function POST(req: Request) {
-  const { messages, agentId, mode } = await req.json()
+  const { messages, mode } = await req.json()
 
   if (mode === "structured") {
-    // Use generateObject for structured responses
-    const result = await generateObject({
-      model: openai("gpt-4o"),
-      schema: z.object({
-        intent: z.enum(["calendar", "email", "task", "question"]),
-        confidence: z.number().min(0).max(1),
-        parameters: z.object({
-          title: z.string().optional(),
-          date: z.string().optional(),
-          time: z.string().optional(),
-          description: z.string().optional(),
+    const { output } = await generateText({
+      model: "openai/gpt-4o",
+      output: Output.object({
+        schema: z.object({
+          intent: z.enum(["calendar", "email", "task", "question"]),
+          confidence: z.number().min(0).max(1),
+          parameters: z.object({
+            title: z.string().optional(),
+            date: z.string().optional(),
+            time: z.string().optional(),
+            description: z.string().optional(),
+          }),
+          suggestedActions: z.array(z.string()),
         }),
-        suggestedActions: z.array(z.string()),
       }),
       prompt: `Analyze this user request: ${messages[messages.length - 1].content}`,
     })
 
-    return Response.json(result.object)
+    return Response.json(output)
   }
 
-  // Enhanced streaming with multiple tools
-  const result = await streamText({
-    model: openai("gpt-4o"),
+  // Streaming with tools (v6 tool() helper + execute)
+  const result = streamText({
+    model: "openai/gpt-4o",
     system: `You are an intelligent K-12 educational assistant with access to multiple tools.`,
     messages,
     tools: {
-      // Calendar tools
-      createCalendarEvent: {
+      createCalendarEvent: tool({
         description: "Create calendar events",
-        parameters: z.object({
+        inputSchema: z.object({
           title: z.string(),
           startTime: z.string(),
           endTime: z.string(),
           description: z.string().optional(),
         }),
-      },
-
-      // Email tools (if integrated)
-      sendEmail: {
+        execute: async (args) => handleCalendarEvent(args),
+      }),
+      sendEmail: tool({
         description: "Send emails to students/parents",
-        parameters: z.object({
+        inputSchema: z.object({
           to: z.string(),
           subject: z.string(),
           body: z.string(),
         }),
-      },
-
-      // Browser automation tools
-      automateWebTask: {
+        execute: async (args) => handleEmailSend(args),
+      }),
+      automateWebTask: tool({
         description: "Automate web browser tasks",
-        parameters: z.object({
+        inputSchema: z.object({
           action: z.enum(["click", "fill", "navigate", "extract"]),
           target: z.string(),
           value: z.string().optional(),
         }),
-      },
-
-      // Data analysis tools
-      analyzeStudentData: {
+        execute: async (args) => handleBrowserAutomation(args),
+      }),
+      analyzeStudentData: tool({
         description: "Analyze student performance data",
-        parameters: z.object({
+        inputSchema: z.object({
           dataType: z.enum(["grades", "attendance", "behavior"]),
           timeframe: z.string(),
           studentId: z.string().optional(),
         }),
-      },
-    },
-    toolChoice: "auto",
-    onToolCall: async ({ toolName, args }) => {
-      switch (toolName) {
-        case "createCalendarEvent":
-          return await handleCalendarEvent(args)
-        case "sendEmail":
-          return await handleEmailSend(args)
-        case "automateWebTask":
-          return await handleBrowserAutomation(args)
-        case "analyzeStudentData":
-          return await handleDataAnalysis(args)
-        default:
-          return JSON.stringify({ error: "Unknown tool" })
-      }
+        execute: async (args) => handleDataAnalysis(args),
+      }),
     },
   })
 
-  return result.toDataStreamResponse()
+  return result.toUIMessageStreamResponse()
 }
 
 async function handleBrowserAutomation(args: any) {
-  // Integrate with browser extension
   const response = await fetch("http://localhost:3000/api/extension/execute", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -107,25 +88,21 @@ async function handleBrowserAutomation(args: any) {
       },
     }),
   })
-
-  return JSON.stringify(await response.json())
+  return await response.json()
 }
 
 async function handleDataAnalysis(args: any) {
-  // Mock student data analysis
-  return JSON.stringify({
+  return {
     success: true,
     analysis: `Analyzed ${args.dataType} data for ${args.timeframe}`,
     insights: ["Performance trending upward", "Attendance rate: 95%", "No behavioral concerns"],
-  })
+  }
 }
 
-async function handleCalendarEvent(args: any) {
-  // Placeholder for calendar event handling logic
-  return JSON.stringify({ success: true, message: "Calendar event created" })
+async function handleCalendarEvent(_args: any) {
+  return { success: true, message: "Calendar event created" }
 }
 
-async function handleEmailSend(args: any) {
-  // Placeholder for email sending logic
-  return JSON.stringify({ success: true, message: "Email sent" })
+async function handleEmailSend(_args: any) {
+  return { success: true, message: "Email sent" }
 }

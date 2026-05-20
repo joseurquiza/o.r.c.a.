@@ -2,7 +2,7 @@
 
 import { createClient } from "@/lib/supabase/server"
 import { GmailClient } from "@/lib/gmail-client"
-import { generateText, Output, tool } from "ai"
+import { generateText, Output } from "ai"
 import { z } from "zod"
 import { revalidatePath } from "next/cache"
 
@@ -91,7 +91,7 @@ export async function runEmailAnalysis(agentId: string, hoursBack = 24) {
       )
       .join("\n\n")
 
-    const result = await generateText({
+    const { output: analysis } = await generateText({
       model: "openai/gpt-5-mini",
       system: `You are an executive assistant analyzing the user's recent emails. Your job is to:
 1. Identify the most important items requiring the user's attention
@@ -101,10 +101,8 @@ export async function runEmailAnalysis(agentId: string, hoursBack = 24) {
 
 Be concise and focus on what matters most.`,
       prompt: `Here are ${messages.length} emails from the last ${hoursBack} hours. Analyze them and provide a prioritized summary:\n\n${emailText}`,
-      experimental_output: Output.object({ schema: summarySchema }),
+      output: Output.object({ schema: summarySchema }),
     })
-
-    const analysis = result.experimental_output
 
     // Save summary
     const today = new Date().toISOString().split("T")[0]
