@@ -13,6 +13,7 @@ import {
   Monitor,
   Download,
   Users,
+  Mail,
   X,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -36,6 +37,11 @@ const navigationItems = [
     title: "Remote Agents",
     url: "/agents/remote",
     icon: Users,
+  },
+  {
+    title: "Email Agent",
+    url: "/agents/email",
+    icon: Mail,
   },
   {
     title: "Remote Control",
