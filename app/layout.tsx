@@ -25,15 +25,10 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en">
-      <head>
-        <link rel="icon" href="/favicon.ico" sizes="any" />
-        <link rel="icon" href="/orca-logo.png" type="image/png" />
-        <link rel="apple-touch-icon" href="/orca-logo.png" />
-      </head>
+    <html lang="en" className="bg-background">
       <body className={`${inter.className} font-sans antialiased`}>
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-          <div className="flex h-screen bg-gray-50">
+          <div className="flex h-screen bg-background">
             <AppSidebar />
             <main className="flex-1 overflow-auto">{children}</main>
           </div>
