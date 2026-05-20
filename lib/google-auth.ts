@@ -30,6 +30,60 @@ export function createGoogleAuthUrl(state?: string) {
   return `https://accounts.google.com/oauth/authorize?${params.toString()}`
 }
 
+// Gmail-specific OAuth config
+export const gmailScopes = [
+  "https://www.googleapis.com/auth/gmail.readonly",
+  "https://www.googleapis.com/auth/userinfo.email",
+  "https://www.googleapis.com/auth/userinfo.profile",
+]
+
+export const gmailRedirectUri = `https://theorca.app/api/gmail/callback`
+
+// Create Gmail Auth URL (separate flow from Calendar)
+export function createGmailAuthUrl(state?: string) {
+  if (!googleAuthConfig.clientId) {
+    throw new Error("Google Client ID not configured")
+  }
+
+  const params = new URLSearchParams({
+    client_id: googleAuthConfig.clientId,
+    redirect_uri: gmailRedirectUri,
+    scope: gmailScopes.join(" "),
+    response_type: "code",
+    access_type: "offline",
+    prompt: "consent",
+    ...(state && { state }),
+  })
+
+  return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`
+}
+
+// Exchange Gmail code (uses Gmail redirect URI)
+export async function exchangeGmailCode(code: string) {
+  if (!googleAuthConfig.clientId || !googleAuthConfig.clientSecret) {
+    throw new Error("Google OAuth credentials not configured")
+  }
+
+  const response = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      client_id: googleAuthConfig.clientId,
+      client_secret: googleAuthConfig.clientSecret,
+      code,
+      grant_type: "authorization_code",
+      redirect_uri: gmailRedirectUri,
+    }),
+  })
+
+  if (!response.ok) {
+    const error = await response.text()
+    throw new Error(`Failed to exchange Gmail code: ${error}`)
+  }
+
+  return response.json()
+}
+
 // Exchange authorization code for tokens
 export async function exchangeCodeForTokens(code: string) {
   if (!googleAuthConfig.clientId || !googleAuthConfig.clientSecret) {
