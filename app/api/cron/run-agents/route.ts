@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { createClient } from "@supabase/supabase-js"
-import { computeNextRunAt } from "@/lib/actions/agent-schedules"
+import { computeNextRunAt } from "@/lib/scheduling"
 import { runEmailAnalysis } from "@/lib/actions/email-agent"
 
 export const dynamic = "force-dynamic"
