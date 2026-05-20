@@ -7,6 +7,8 @@ import {
   Menu,
   Bot,
   X,
+  Inbox,
+  Plug,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import Link from "next/link"
@@ -21,9 +23,19 @@ const navigationItems = [
     icon: Home,
   },
   {
-    title: "Agents",
-    url: "/agents",
+    title: "Workers",
+    url: "/workers",
     icon: Bot,
+  },
+  {
+    title: "Inbox",
+    url: "/inbox",
+    icon: Inbox,
+  },
+  {
+    title: "Connections",
+    url: "/connections",
+    icon: Plug,
   },
   {
     title: "Settings",
