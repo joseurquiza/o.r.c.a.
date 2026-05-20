@@ -70,7 +70,7 @@ export async function runSupportWorker(workerId: string) {
       const msg = await gmail.getMessage(m.id)
 
       // 4. Triage with LLM
-      const { experimental_output: triage } = await generateText({
+      const { output: triage } = await generateText({
         model: "openai/gpt-5-mini",
         system: worker.system_prompt || "",
         prompt: `Customer email:
@@ -80,7 +80,7 @@ Body:
 ${msg.body.slice(0, 3000)}
 
 Triage this email. Decide intent, sentiment, whether a human must handle it, and a draft reply (or null).`,
-        experimental_output: Output.object({ schema: TriageSchema }),
+        output: Output.object({ schema: TriageSchema }),
       })
 
       // 5. Create an approval for the suggested reply (approve-by-default)

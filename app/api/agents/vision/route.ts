@@ -1,47 +1,40 @@
-import { streamText } from "ai"
-import { openai } from "@ai-sdk/openai"
+import { streamText, tool } from "ai"
+import { z } from "zod"
 
-// AI SDK with vision capabilities
+// AI SDK with vision capabilities (v6)
 export async function POST(req: Request) {
   const { messages, screenshot } = await req.json()
 
-  const result = await streamText({
-    model: openai("gpt-4o"), // GPT-4 Vision
+  const result = streamText({
+    model: "openai/gpt-4o",
     messages: [
       ...messages,
       {
-        role: "user",
+        role: "user" as const,
         content: [
-          { type: "text", text: "What do you see on this screen? What actions can I take?" },
+          { type: "text" as const, text: "What do you see on this screen? What actions can I take?" },
           {
-            type: "image",
-            image: screenshot, // Base64 screenshot from extension
+            type: "image" as const,
+            image: screenshot,
           },
         ],
       },
     ],
     tools: {
-      identifyElements: {
+      identifyElements: tool({
         description: "Identify clickable elements on screen",
-        parameters: {
-          type: "object",
-          properties: {
-            elements: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  type: { type: "string" },
-                  text: { type: "string" },
-                  action: { type: "string" },
-                },
-              },
-            },
-          },
-        },
-      },
+        inputSchema: z.object({
+          elements: z.array(
+            z.object({
+              type: z.string(),
+              text: z.string(),
+              action: z.string(),
+            }),
+          ),
+        }),
+      }),
     },
   })
 
-  return result.toDataStreamResponse()
+  return result.toUIMessageStreamResponse()
 }

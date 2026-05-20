@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { ArrowLeft, Send, User, Calendar, Clock, MapPin, Chrome, Download } from "lucide-react"
 import Link from "next/link"
-import { useChat } from "ai/react"
+import { useChat } from "@ai-sdk/react"
 
 export default function AgentTestConsole({ params }: { params: { id: string } }) {
   const { messages, input, handleInputChange, handleSubmit, isLoading } = useChat({

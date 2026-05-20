@@ -233,14 +233,11 @@ export async function POST(req: Request) {
     ? `\nThe user is controlling remote agent: ${agentId}. Use this ID when calling tools.`
     : "\nNo remote agent is currently selected. Ask the user to select one first."
 
-  // Create a modified agent with context
-  const contextualAgent = new ToolLoopAgent({
-    ...browserControlAgent,
-    instructions: browserControlAgent.instructions + systemContext,
-  })
-
   return createAgentUIStreamResponse({
-    agent: contextualAgent,
+    agent: browserControlAgent,
     uiMessages: messages,
+    callOptions: {
+      system: browserControlAgent.instructions + systemContext,
+    },
   })
 }

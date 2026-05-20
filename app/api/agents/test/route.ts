@@ -1,5 +1,5 @@
-import { streamText } from "ai"
-import { openai } from "@ai-sdk/openai"
+import { streamText, tool } from "ai"
+import { z } from "zod"
 import { GoogleCalendarClient } from "@/lib/google-auth"
 
 // Calendar parsing function (same as before)
@@ -148,89 +148,49 @@ Current date/time: ${new Date().toLocaleString()}`
   const tools: any = {}
 
   if (agentConfig.connectedAPIs.includes("Google Calendar") || agentConfig.connectedAPIs.includes("google-calendar")) {
-    tools.parseCalendarRequest = {
+    tools.parseCalendarRequest = tool({
       description: "Parse a natural language calendar request into structured event data",
-      parameters: {
-        type: "object",
-        properties: {
-          input: {
-            type: "string",
-            description: "The natural language input to parse",
-          },
-        },
-        required: ["input"],
-      },
-    }
-
-    tools.createCalendarEvent = {
-      description: "Create a new calendar event in Google Calendar",
-      parameters: {
-        type: "object",
-        properties: {
-          summary: {
-            type: "string",
-            description: "The title/summary of the event",
-          },
-          description: {
-            type: "string",
-            description: "Optional description of the event",
-          },
-          startDateTime: {
-            type: "string",
-            description: "Start date and time in ISO format",
-          },
-          endDateTime: {
-            type: "string",
-            description: "End date and time in ISO format",
-          },
-          location: {
-            type: "string",
-            description: "Optional location of the event",
-          },
-        },
-        required: ["summary", "startDateTime", "endDateTime"],
-      },
-    }
-  }
-
-  const result = await streamText({
-    model: openai("gpt-4o"),
-    system: systemPrompt,
-    messages,
-    tools: Object.keys(tools).length > 0 ? tools : undefined,
-    toolChoice: "auto",
-    onToolCall: async ({ toolName, args }) => {
-      if (toolName === "parseCalendarRequest") {
-        const parsed = parseCalendarRequest(args.input)
+      inputSchema: z.object({
+        input: z.string().describe("The natural language input to parse"),
+      }),
+      execute: async ({ input }) => {
+        const parsed = parseCalendarRequest(input)
         if (parsed) {
-          return JSON.stringify({
+          return {
             success: true,
             event: parsed,
             message: `Parsed calendar request: "${parsed.summary}" on ${new Date(parsed.start.dateTime).toLocaleDateString()} at ${new Date(parsed.start.dateTime).toLocaleTimeString()}`,
-          })
-        } else {
-          return JSON.stringify({
-            success: false,
-            message:
-              "Could not parse the calendar request. Please provide more details like the event title and when it should be scheduled.",
-          })
+          }
         }
-      }
+        return {
+          success: false,
+          message:
+            "Could not parse the calendar request. Please provide more details like the event title and when it should be scheduled.",
+        }
+      },
+    })
 
-      if (toolName === "createCalendarEvent") {
+    tools.createCalendarEvent = tool({
+      description: "Create a new calendar event in Google Calendar",
+      inputSchema: z.object({
+        summary: z.string().describe("The title/summary of the event"),
+        description: z.string().optional().describe("Optional description of the event"),
+        startDateTime: z.string().describe("Start date and time in ISO format"),
+        endDateTime: z.string().describe("End date and time in ISO format"),
+        location: z.string().optional().describe("Optional location of the event"),
+      }),
+      execute: async (args) => {
         try {
           const tokenData = agentConfig.tokenData?.["google-calendar"]
-
           if (!tokenData?.access_token) {
-            return JSON.stringify({
+            return {
               success: false,
               error: "Google Calendar not connected",
               message:
                 "This agent is not connected to Google Calendar. Please reconnect the agent with proper OAuth authentication.",
-            })
+            }
           }
 
-          // Real Google Calendar API call
           const calendarClient = new GoogleCalendarClient(tokenData.access_token, tokenData.refresh_token)
 
           const event = {
@@ -249,31 +209,32 @@ Current date/time: ${new Date().toLocaleString()}`
 
           const createdEvent = await calendarClient.createEvent("primary", event)
 
-          return JSON.stringify({
+          return {
             success: true,
             event: createdEvent,
-            message: `✅ Successfully created calendar event: "${args.summary}" for ${new Date(args.startDateTime).toLocaleDateString()} at ${new Date(args.startDateTime).toLocaleTimeString()}`,
+            message: `Successfully created calendar event: "${args.summary}" for ${new Date(args.startDateTime).toLocaleDateString()} at ${new Date(args.startDateTime).toLocaleTimeString()}`,
             calendarLink: createdEvent.htmlLink,
-          })
+          }
         } catch (error) {
           console.error("Calendar API error:", error)
-          return JSON.stringify({
+          return {
             success: false,
             error: "Failed to create calendar event",
             details: error instanceof Error ? error.message : "Unknown error",
             message:
               "Failed to create calendar event. This may be due to expired authentication tokens. Please reconnect your Google Calendar integration.",
-          })
+          }
         }
-      }
+      },
+    })
+  }
 
-      return JSON.stringify({
-        success: false,
-        error: "Tool not implemented",
-        message: "The requested functionality is not available.",
-      })
-    },
+  const result = streamText({
+    model: "openai/gpt-4o",
+    system: systemPrompt,
+    messages,
+    tools: Object.keys(tools).length > 0 ? tools : undefined,
   })
 
-  return result.toDataStreamResponse()
+  return result.toUIMessageStreamResponse()
 }
