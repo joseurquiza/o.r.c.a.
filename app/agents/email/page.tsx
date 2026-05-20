@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useTransition } from "react"
+import { Suspense, useEffect, useState, useTransition } from "react"
 import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -49,6 +49,14 @@ interface EmailSummary {
 }
 
 export default function EmailAgentPage() {
+  return (
+    <Suspense fallback={<div className="container max-w-5xl mx-auto p-4 md:p-6">Loading...</div>}>
+      <EmailAgentPageInner />
+    </Suspense>
+  )
+}
+
+function EmailAgentPageInner() {
   const searchParams = useSearchParams()
   const [agents, setAgents] = useState<EmailAgent[]>([])
   const [summaries, setSummaries] = useState<EmailSummary[]>([])
