@@ -4,7 +4,7 @@ import { useState, useTransition } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Check, Download, Loader2 } from "lucide-react"
+import { Check, Download, Loader2, Bot } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -14,6 +14,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { installApp, uninstallApp } from "@/lib/actions/store-apps"
+import { promoteAppToWorker } from "@/lib/actions/workers"
 import { useRouter } from "next/navigation"
 
 export function InstallButton({
@@ -31,6 +32,7 @@ export function InstallButton({
   const [email, setEmail] = useState(knownEmail ?? "")
   const [error, setError] = useState<string | null>(null)
   const [isPending, start] = useTransition()
+  const [isPromoting, startPromote] = useTransition()
   const router = useRouter()
 
   function handleInstall() {
@@ -58,16 +60,38 @@ export function InstallButton({
     })
   }
 
+  function handleAddToWorkers() {
+    startPromote(async () => {
+      const r = await promoteAppToWorker(appId)
+      if (r.success) {
+        router.push(`/workers/${r.workerId}`)
+      } else {
+        setError(r.error)
+      }
+    })
+  }
+
   if (isInstalled) {
     return (
-      <Button variant="outline" disabled={isPending} onClick={handleUninstall}>
-        {isPending ? (
-          <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-        ) : (
-          <Check className="h-4 w-4 mr-1" />
-        )}
-        Installed
-      </Button>
+      <div className="flex flex-wrap gap-2 justify-end">
+        <Button variant="outline" disabled={isPending} onClick={handleUninstall}>
+          {isPending ? (
+            <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+          ) : (
+            <Check className="h-4 w-4 mr-1" />
+          )}
+          Installed
+        </Button>
+        <Button disabled={isPromoting} onClick={handleAddToWorkers}>
+          {isPromoting ? (
+            <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+          ) : (
+            <Bot className="h-4 w-4 mr-1" />
+          )}
+          Add to Workers
+        </Button>
+        {error && <p className="text-sm text-destructive w-full text-right">{error}</p>}
+      </div>
     )
   }
 
