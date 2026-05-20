@@ -173,3 +173,99 @@ export async function deleteWorker(id: string) {
   revalidatePath("/workers")
   return { success: true }
 }
+
+/**
+ * Promote a store app into a per-user worker instance for the current org.
+ * Pulls the worker template from the app's current_version manifest:
+ *   manifest.worker = { name?, system_prompt?, job_description?, tool_permissions?, schedule_cron?, schedule_timezone? }
+ *
+ * Idempotent: if a worker already exists in this org for this app, returns it
+ * instead of creating a duplicate.
+ */
+export async function promoteAppToWorker(appId: string): Promise<
+  | { success: true; workerId: string; created: boolean }
+  | { success: false; error: string }
+> {
+  if (!appId) return { success: false, error: "Missing app id" }
+  const supabase = await createClient()
+  const orgId = await getCurrentOrgId()
+
+  // Existing worker for this app in this org?
+  const { data: existing } = await supabase
+    .from("workers")
+    .select("id")
+    .eq("org_id", orgId)
+    .eq("source_app_id", appId)
+    .maybeSingle()
+  if (existing) {
+    return { success: true, workerId: (existing as { id: string }).id, created: false }
+  }
+
+  // Pull app + current version manifest
+  const { data: app, error: appErr } = await supabase
+    .from("store_apps")
+    .select("id, name, tagline, current_version_id, status")
+    .eq("id", appId)
+    .maybeSingle()
+  if (appErr || !app) return { success: false, error: "App not found" }
+  const a = app as {
+    id: string
+    name: string
+    tagline: string | null
+    current_version_id: string | null
+    status: string
+  }
+  if (a.status !== "live") return { success: false, error: "App is not available" }
+
+  let manifest: Record<string, unknown> = {}
+  let submissionId: string | null = null
+  if (a.current_version_id) {
+    const { data: v } = await supabase
+      .from("store_app_versions")
+      .select("manifest, submission_id")
+      .eq("id", a.current_version_id)
+      .maybeSingle()
+    if (v) {
+      manifest = ((v as { manifest: Record<string, unknown> | null }).manifest ?? {}) as Record<string, unknown>
+      submissionId = (v as { submission_id: string | null }).submission_id ?? null
+    }
+  }
+
+  const w = (manifest.worker ?? {}) as {
+    name?: string
+    system_prompt?: string
+    job_description?: string
+    tool_permissions?: Record<string, "approve" | "auto" | "deny">
+    schedule_cron?: string
+    schedule_timezone?: string
+    template?: string
+  }
+
+  const { data: created, error: insertErr } = await supabase
+    .from("workers")
+    .insert({
+      org_id: orgId,
+      name: w.name?.trim() || a.name,
+      template: w.template || "custom",
+      job_description: w.job_description?.trim() || a.tagline || "",
+      system_prompt: w.system_prompt ?? null,
+      tool_permissions: w.tool_permissions ?? {},
+      connection_ids: [],
+      status: "paused",
+      schedule_enabled: !!w.schedule_cron,
+      schedule_cron: w.schedule_cron ?? null,
+      schedule_timezone: w.schedule_timezone ?? "UTC",
+      source_app_id: a.id,
+      source_app_version_id: a.current_version_id,
+      source_submission_id: submissionId,
+    })
+    .select("id")
+    .single()
+
+  if (insertErr || !created) {
+    return { success: false, error: insertErr?.message || "Could not create worker" }
+  }
+
+  revalidatePath("/workers")
+  return { success: true, workerId: (created as { id: string }).id, created: true }
+}
