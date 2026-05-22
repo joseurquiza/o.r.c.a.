@@ -1,53 +1,83 @@
 "use server"
 
-import { cookies } from "next/headers"
+import { cache } from "react"
+import { createClient } from "@/lib/supabase/server"
 
-const CREATOR_COOKIE = "orca_creator_email"
-const INSTALLER_COOKIE = "orca_installer_email"
+/**
+ * Authenticated identity for store creator + installer + reviewer flows.
+ * Replaces the previous self-asserted cookie-based identity.
+ *
+ * IMPORTANT: every helper here derives identity from the verified Supabase
+ * session. Caller-provided emails are NEVER trusted.
+ */
 
+async function readAuthEmail(): Promise<string | null> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  return user?.email ?? null
+}
+
+export const getCurrentAuthEmail = cache(async () => readAuthEmail())
+
+// Backwards-compatible names used throughout the codebase. Both creator and
+// installer identity now derive from the authenticated user.
 export async function getCreatorEmail(): Promise<string | null> {
-  const c = await cookies()
-  return c.get(CREATOR_COOKIE)?.value ?? null
-}
-
-export async function setCreatorEmail(email: string) {
-  const c = await cookies()
-  c.set(CREATOR_COOKIE, email, {
-    httpOnly: true,
-    sameSite: "lax",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 365,
-  })
-}
-
-export async function clearCreatorEmail() {
-  const c = await cookies()
-  c.delete(CREATOR_COOKIE)
+  return readAuthEmail()
 }
 
 export async function getInstallerEmail(): Promise<string | null> {
-  const c = await cookies()
-  return c.get(INSTALLER_COOKIE)?.value ?? null
-}
-
-export async function setInstallerEmail(email: string) {
-  const c = await cookies()
-  c.set(INSTALLER_COOKIE, email, {
-    httpOnly: true,
-    sameSite: "lax",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 365,
-  })
+  return readAuthEmail()
 }
 
 /**
- * Reviewer access. Anyone signed in as a creator on the configured reviewer
- * email is treated as a reviewer. Comma-separated list in REVIEWER_EMAILS.
- * If unset, the first creator becomes the reviewer (single-user dev mode).
+ * No-ops kept so existing callers don't break their imports.
+ * Identity is now established by signing in via Supabase Auth.
  */
-export async function isReviewer(email: string | null): Promise<boolean> {
-  if (!email) return false
-  const list = process.env.REVIEWER_EMAILS
-  if (!list) return true // dev mode: any logged-in creator can review
-  return list.split(",").map((s) => s.trim().toLowerCase()).includes(email.toLowerCase())
+export async function setCreatorEmail(_email: string): Promise<void> {
+  // intentionally a no-op; sign in via /auth/login
+}
+export async function clearCreatorEmail(): Promise<void> {
+  // intentionally a no-op; sign out via /auth/logout
+}
+export async function setInstallerEmail(_email: string): Promise<void> {
+  // intentionally a no-op
+}
+
+/**
+ * Reviewer check. Requires the authenticated user to be in
+ * public.platform_reviewers or in the bootstrap REVIEWER_EMAILS env var.
+ *
+ * The optional `email` argument is kept for backwards compatibility but is
+ * now used only as an extra constraint: it must match the *authenticated*
+ * email. Callers can no longer pass an arbitrary email and become a reviewer.
+ */
+export async function isReviewer(email?: string | null): Promise<boolean> {
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user || !user.email) return false
+
+  if (email && email.trim().toLowerCase() !== user.email.toLowerCase()) {
+    return false
+  }
+
+  const target = user.email.toLowerCase()
+
+  // Allowlist via env var (bootstrap)
+  const envList = (process.env.REVIEWER_EMAILS ?? "")
+    .split(",")
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean)
+  if (envList.includes(target)) return true
+
+  // Allowlist via DB
+  const { data } = await supabase
+    .from("platform_reviewers")
+    .select("user_id")
+    .eq("user_id", user.id)
+    .maybeSingle()
+  return !!data
 }
