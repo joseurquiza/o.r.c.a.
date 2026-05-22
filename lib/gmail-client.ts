@@ -1,5 +1,6 @@
 import { refreshAccessToken } from "@/lib/google-auth"
 import { createClient } from "@/lib/supabase/server"
+import { decryptToken, encryptToken } from "@/lib/crypto/tokens"
 
 export interface GmailMessage {
   id: string
@@ -16,13 +17,18 @@ export interface GmailMessage {
 }
 
 export class GmailClient {
-  private accessToken: string
-  private refreshToken: string
+  // Always plaintext at runtime; ciphertext is decrypted in the constructor.
+  public accessToken: string
+  public refreshToken: string
   private agentId?: string
 
+  /**
+   * Accepts either plaintext tokens (e.g. fresh from OAuth exchange) or the
+   * `v1:...` ciphertext format produced by lib/crypto/tokens.encryptToken.
+   */
   constructor(accessToken: string, refreshToken: string, agentId?: string) {
-    this.accessToken = accessToken
-    this.refreshToken = refreshToken
+    this.accessToken = decryptToken(accessToken) ?? accessToken
+    this.refreshToken = decryptToken(refreshToken) ?? refreshToken
     this.agentId = agentId
   }
 
@@ -45,7 +51,7 @@ export class GmailClient {
         await supabase
           .from("email_agents")
           .update({
-            gmail_access_token: tokens.access_token,
+            gmail_access_token: encryptToken(tokens.access_token),
             token_expires_at: Date.now() + tokens.expires_in * 1000,
           })
           .eq("id", this.agentId)

@@ -1,7 +1,7 @@
 "use server"
 
 import { createClient } from "@/lib/supabase/server"
-import { getCreatorEmail, setCreatorEmail, clearCreatorEmail } from "@/lib/store/identity"
+import { getCreatorEmail } from "@/lib/store/identity"
 import { revalidatePath } from "next/cache"
 
 export interface Creator {
@@ -16,54 +16,62 @@ export interface Creator {
   created_at: string
 }
 
-export async function getOrCreateCreatorByEmail(email: string, displayName?: string): Promise<Creator> {
+/**
+ * Look up (or create) the store_creators row for the *currently authenticated*
+ * user. We never trust a caller-supplied email — that previously let anyone
+ * impersonate any creator by setting a cookie.
+ */
+async function getOrCreateCreatorForCurrentUser(): Promise<Creator | null> {
   const supabase = await createClient()
-  const normalized = email.trim().toLowerCase()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user || !user.email) return null
+
+  const email = user.email.toLowerCase()
+  const displayName =
+    (user.user_metadata as { display_name?: string; full_name?: string } | null)?.display_name ??
+    (user.user_metadata as { full_name?: string } | null)?.full_name ??
+    email.split("@")[0]
 
   const { data: existing } = await supabase
     .from("store_creators")
     .select("*")
-    .eq("email", normalized)
+    .eq("email", email)
     .maybeSingle()
-
   if (existing) return existing as Creator
 
   const { data: created, error } = await supabase
     .from("store_creators")
-    .insert({ email: normalized, display_name: displayName ?? normalized.split("@")[0] })
+    .insert({ email, display_name: displayName })
     .select("*")
     .single()
-
-  if (error || !created) throw new Error(error?.message || "Could not create creator")
+  if (error || !created) return null
   return created as Creator
 }
 
 export async function getCurrentCreator(): Promise<Creator | null> {
+  // Backed by Supabase Auth: presence of a session is what makes you a creator,
+  // not a self-asserted cookie. We auto-provision a store_creators row on
+  // first access so existing callers don't need to change.
   const email = await getCreatorEmail()
   if (!email) return null
-  const supabase = await createClient()
-  const { data } = await supabase
-    .from("store_creators")
-    .select("*")
-    .eq("email", email.toLowerCase())
-    .maybeSingle()
-  return (data as Creator | null) ?? null
+  return getOrCreateCreatorForCurrentUser()
 }
 
-export async function signInAsCreator(formData: FormData) {
-  const email = String(formData.get("email") ?? "").trim().toLowerCase()
-  const displayName = String(formData.get("displayName") ?? "").trim() || undefined
-  if (!email || !email.includes("@")) {
-    return { error: "Enter a valid email" }
-  }
-  await getOrCreateCreatorByEmail(email, displayName)
-  await setCreatorEmail(email)
+export async function signInAsCreator(_formData: FormData) {
+  // Sign-in is now handled by /auth/login (Supabase Auth). This server action
+  // is kept only so existing client forms don't 404; it just upserts the
+  // store_creators row for the already-authenticated user.
+  const creator = await getOrCreateCreatorForCurrentUser()
+  if (!creator) return { error: "Sign in via /auth/login first." }
   revalidatePath("/creators")
   return { success: true }
 }
 
 export async function signOutCreator() {
-  await clearCreatorEmail()
+  const supabase = await createClient()
+  await supabase.auth.signOut()
   revalidatePath("/creators")
   return { success: true }
 }
