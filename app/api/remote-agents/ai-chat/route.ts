@@ -6,16 +6,11 @@ import {
   type UIMessage,
 } from "ai"
 import { z } from "zod"
-import { createClient } from "@supabase/supabase-js"
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
+import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 
 export const maxDuration = 60
 
-// AI Agent for remote browser control
 const browserControlAgent = new ToolLoopAgent({
   model: "openai/gpt-4o",
   instructions: `You are ORCA, an AI assistant that helps users control remote browsers.
@@ -25,37 +20,29 @@ Always describe what you see and what actions you're taking.`,
 
   tools: {
     getPageElements: tool({
-      description: "Get all clickable elements currently visible on the remote browser page",
-      inputSchema: z.object({
-        agentId: z.string().describe("The remote agent ID to query"),
-      }),
+      description: "Get elements visible on the remote browser page",
+      inputSchema: z.object({ agentId: z.string() }),
       execute: async ({ agentId }) => {
-        const { data: elements, error } = await supabase
+        const admin = createAdminClient()
+        const { data: elements } = await admin
           .from("remote_agent_elements")
-          .select("*")
+          .select("element_index, tag, text, selector, href, element_type")
           .eq("agent_id", agentId)
           .order("element_index", { ascending: true })
           .limit(50)
-
-        if (error) {
-          return { success: false, error: error.message }
-        }
-
-        const { data: agent } = await supabase
+        const { data: agent } = await admin
           .from("remote_agents")
-          .select("current_url, current_title")
+          .select("current_url")
           .eq("agent_id", agentId)
-          .single()
-
+          .maybeSingle()
         return {
           success: true,
-          url: agent?.current_url || "unknown",
-          title: agent?.current_title || "Unknown Page",
-          elementsCount: elements?.length || 0,
+          url: agent?.current_url ?? "unknown",
+          elementsCount: elements?.length ?? 0,
           elements: elements?.map((el) => ({
             index: el.element_index,
-            tag: el.tag_name,
-            text: el.text_content?.slice(0, 100) || "",
+            tag: el.tag,
+            text: (el.text ?? "").slice(0, 100),
             selector: el.selector,
             href: el.href,
             type: el.element_type,
@@ -63,160 +50,92 @@ Always describe what you see and what actions you're taking.`,
         }
       },
     }),
-
     clickElement: tool({
-      description: "Click on an element on the remote browser page",
+      description: "Click an element on the remote browser page",
       inputSchema: z.object({
-        agentId: z.string().describe("The remote agent ID"),
-        selector: z.string().describe("CSS selector of the element to click"),
-        elementText: z.string().nullable().describe("Text of the element for confirmation"),
+        agentId: z.string(),
+        selector: z.string(),
+        elementText: z.string().nullable(),
       }),
       execute: async ({ agentId, selector, elementText }) => {
-        const { data, error } = await supabase
+        const admin = createAdminClient()
+        const { data, error } = await admin
           .from("remote_agent_commands")
-          .insert({
-            agent_id: agentId,
-            command_type: "CLICK_ELEMENT",
-            command_data: { selector, text: elementText },
-            status: "pending",
-          })
-          .select()
+          .insert({ agent_id: agentId, command_type: "CLICK_ELEMENT", command_data: { selector, text: elementText }, status: "pending" })
+          .select("id")
           .single()
-
-        if (error) {
-          return { success: false, error: error.message }
-        }
-
-        return {
-          success: true,
-          message: `Command sent to click "${elementText || selector}"`,
-          commandId: data.id,
-        }
+        return error
+          ? { success: false, error: error.message }
+          : { success: true, commandId: data.id }
       },
     }),
-
     scroll: tool({
-      description: "Scroll the remote browser page up or down",
+      description: "Scroll the page",
       inputSchema: z.object({
-        agentId: z.string().describe("The remote agent ID"),
-        direction: z.enum(["up", "down"]).describe("Direction to scroll"),
-        amount: z.number().default(300).describe("Pixels to scroll"),
+        agentId: z.string(),
+        direction: z.enum(["up", "down"]),
+        amount: z.number().default(300),
       }),
       execute: async ({ agentId, direction, amount }) => {
-        const scrollY = direction === "down" ? amount : -amount
-
-        const { data, error } = await supabase
+        const admin = createAdminClient()
+        const y = direction === "down" ? amount : -amount
+        const { data, error } = await admin
           .from("remote_agent_commands")
-          .insert({
-            agent_id: agentId,
-            command_type: "SCROLL",
-            command_data: { x: 0, y: scrollY },
-            status: "pending",
-          })
-          .select()
+          .insert({ agent_id: agentId, command_type: "SCROLL", command_data: { x: 0, y }, status: "pending" })
+          .select("id")
           .single()
-
-        if (error) {
-          return { success: false, error: error.message }
-        }
-
-        return {
-          success: true,
-          message: `Scrolling ${direction} by ${amount}px`,
-          commandId: data.id,
-        }
+        return error ? { success: false, error: error.message } : { success: true, commandId: data.id }
       },
     }),
-
     navigate: tool({
-      description: "Navigate the remote browser to a new URL",
-      inputSchema: z.object({
-        agentId: z.string().describe("The remote agent ID"),
-        url: z.string().url().describe("The URL to navigate to"),
-      }),
+      description: "Navigate to a URL",
+      inputSchema: z.object({ agentId: z.string(), url: z.string().url() }),
       execute: async ({ agentId, url }) => {
-        const { data, error } = await supabase
+        const admin = createAdminClient()
+        const { data, error } = await admin
           .from("remote_agent_commands")
-          .insert({
-            agent_id: agentId,
-            command_type: "NAVIGATE",
-            command_data: { url },
-            status: "pending",
-          })
-          .select()
+          .insert({ agent_id: agentId, command_type: "NAVIGATE", command_data: { url }, status: "pending" })
+          .select("id")
           .single()
-
-        if (error) {
-          return { success: false, error: error.message }
-        }
-
-        return {
-          success: true,
-          message: `Navigating to ${url}`,
-          commandId: data.id,
-        }
+        return error ? { success: false, error: error.message } : { success: true, commandId: data.id }
       },
     }),
-
     typeText: tool({
-      description: "Type text into a focused input field on the remote browser",
+      description: "Type text into a focused input",
       inputSchema: z.object({
-        agentId: z.string().describe("The remote agent ID"),
-        text: z.string().describe("Text to type"),
-        selector: z.string().nullable().describe("Optional selector to focus first"),
+        agentId: z.string(),
+        text: z.string(),
+        selector: z.string().nullable(),
       }),
       execute: async ({ agentId, text, selector }) => {
-        const { data, error } = await supabase
+        const admin = createAdminClient()
+        const { data, error } = await admin
           .from("remote_agent_commands")
-          .insert({
-            agent_id: agentId,
-            command_type: "TYPE_TEXT",
-            command_data: { text, selector },
-            status: "pending",
-          })
-          .select()
+          .insert({ agent_id: agentId, command_type: "TYPE_TEXT", command_data: { text, selector }, status: "pending" })
+          .select("id")
           .single()
-
-        if (error) {
-          return { success: false, error: error.message }
-        }
-
-        return {
-          success: true,
-          message: `Typing "${text.slice(0, 20)}${text.length > 20 ? "..." : ""}"`,
-          commandId: data.id,
-        }
+        return error ? { success: false, error: error.message } : { success: true, commandId: data.id }
       },
     }),
-
     getAgentStatus: tool({
-      description: "Check the status and connection state of a remote agent",
-      inputSchema: z.object({
-        agentId: z.string().describe("The remote agent ID to check"),
-      }),
+      description: "Check status of a remote agent",
+      inputSchema: z.object({ agentId: z.string() }),
       execute: async ({ agentId }) => {
-        const { data: agent, error } = await supabase
+        const admin = createAdminClient()
+        const { data: agent } = await admin
           .from("remote_agents")
-          .select("*")
+          .select("agent_id, name, status, last_seen, current_url")
           .eq("agent_id", agentId)
-          .single()
-
-        if (error || !agent) {
-          return { success: false, error: "Agent not found" }
-        }
-
-        const lastSeenAgo = Date.now() - new Date(agent.last_seen).getTime()
-        const isOnline = lastSeenAgo < 60000 // 60 seconds
-
+          .maybeSingle()
+        if (!agent) return { success: false, error: "Agent not found" }
+        const lastSeenAgo = agent.last_seen ? Date.now() - new Date(agent.last_seen).getTime() : Number.POSITIVE_INFINITY
         return {
           success: true,
-          name: agent.agent_name,
+          name: agent.name,
           status: agent.status,
-          isOnline,
+          isOnline: lastSeenAgo < 60000,
           lastSeenAgo: Math.round(lastSeenAgo / 1000),
           currentUrl: agent.current_url,
-          currentTitle: agent.current_title,
-          elementsCount: agent.elements_count,
         }
       },
     }),
@@ -226,9 +145,35 @@ Always describe what you see and what actions you're taking.`,
 })
 
 export async function POST(req: Request) {
+  // Auth: require a signed-in user, and verify the agent belongs to their org.
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return new Response("Unauthorized", { status: 401 })
+
   const { messages, agentId }: { messages: UIMessage[]; agentId?: string } = await req.json()
 
-  // Inject agent context into the conversation
+  if (agentId) {
+    const { data: membership } = await supabase
+      .from("org_members")
+      .select("org_id")
+      .eq("user_id", user.id)
+      .limit(1)
+      .maybeSingle()
+    if (!membership?.org_id) return new Response("No organization", { status: 403 })
+
+    const admin = createAdminClient()
+    const { data: agent } = await admin
+      .from("remote_agents")
+      .select("agent_id, org_id")
+      .eq("agent_id", agentId)
+      .maybeSingle()
+    if (!agent || agent.org_id !== membership.org_id) {
+      return new Response("Forbidden", { status: 403 })
+    }
+  }
+
   const systemContext = agentId
     ? `\nThe user is controlling remote agent: ${agentId}. Use this ID when calling tools.`
     : "\nNo remote agent is currently selected. Ask the user to select one first."
@@ -236,8 +181,6 @@ export async function POST(req: Request) {
   return createAgentUIStreamResponse({
     agent: browserControlAgent,
     uiMessages: messages,
-    callOptions: {
-      system: browserControlAgent.instructions + systemContext,
-    },
+    callOptions: { system: browserControlAgent.instructions + systemContext },
   })
 }
