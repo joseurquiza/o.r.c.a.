@@ -1,37 +1,32 @@
 import { type NextRequest, NextResponse } from "next/server"
-import { createClient } from "@supabase/supabase-js"
-
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+import { authenticateAgentRequest } from "@/lib/agents/auth"
+import { createAdminClient } from "@/lib/supabase/admin"
 
 export async function POST(request: NextRequest, { params }: { params: { agentId: string } }) {
+  const { agentId } = params
+  const ctx = await authenticateAgentRequest(request, { agentId })
+  if (!ctx) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 })
+
+  let body: { status?: string; currentUrl?: string }
   try {
-    const { agentId } = params
-    const body = await request.json()
-
-    console.log(`💓 Heartbeat from agent: ${agentId}`)
-
-    // Update agent status and last seen
-    const { error } = await supabase
-      .from("remote_agents")
-      .update({
-        status: body.status || "active",
-        current_url: body.currentUrl,
-        last_seen: new Date().toISOString(),
-      })
-      .eq("agent_id", agentId)
-
-    if (error) {
-      console.error("❌ Heartbeat database error:", error)
-      return NextResponse.json({ success: false, error: "Failed to update heartbeat" }, { status: 500 })
-    }
-
-    return NextResponse.json({
-      success: true,
-      message: "Heartbeat received",
-      timestamp: new Date().toISOString(),
-    })
-  } catch (error) {
-    console.error("❌ Heartbeat API error:", error)
-    return NextResponse.json({ success: false, error: "Heartbeat failed" }, { status: 500 })
+    body = await request.json()
+  } catch {
+    body = {}
   }
+
+  const admin = createAdminClient()
+  const { error } = await admin
+    .from("remote_agents")
+    .update({
+      status: typeof body.status === "string" ? body.status : "active",
+      current_url: typeof body.currentUrl === "string" ? body.currentUrl : null,
+      last_seen: new Date().toISOString(),
+    })
+    .eq("agent_id", agentId)
+    .eq("org_id", ctx.orgId)
+
+  if (error) {
+    return NextResponse.json({ success: false, error: "Failed to update heartbeat" }, { status: 500 })
+  }
+  return NextResponse.json({ success: true, timestamp: new Date().toISOString() })
 }

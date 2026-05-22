@@ -1,23 +1,31 @@
-import { NextResponse } from "next/server"
-import { createClient } from "@supabase/supabase-js"
+import { type NextRequest, NextResponse } from "next/server"
+import { createClient } from "@/lib/supabase/server"
 
-const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
-
+// List remote agents for the authenticated user's org.
+// Session-only: the dashboard UI calls this. Extension does not.
 export async function GET() {
-  try {
-    const { data: agents, error } = await supabase
-      .from("remote_agents")
-      .select("*")
-      .order("created_at", { ascending: false })
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
 
-    if (error) {
-      console.error("Supabase error:", error)
-      return NextResponse.json({ error: "Failed to fetch agents" }, { status: 500 })
-    }
+  const { data: membership } = await supabase
+    .from("org_members")
+    .select("org_id")
+    .eq("user_id", user.id)
+    .limit(1)
+    .maybeSingle()
+  if (!membership?.org_id) return NextResponse.json({ agents: [] })
 
-    return NextResponse.json({ agents: agents || [] })
-  } catch (error) {
-    console.error("Error fetching agents:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+  const { data: agents, error } = await supabase
+    .from("remote_agents")
+    .select("agent_id, name, description, status, current_url, last_seen, created_at")
+    .eq("org_id", membership.org_id)
+    .order("created_at", { ascending: false })
+
+  if (error) {
+    return NextResponse.json({ error: "Failed to fetch agents" }, { status: 500 })
   }
+  return NextResponse.json({ agents: agents ?? [] })
 }

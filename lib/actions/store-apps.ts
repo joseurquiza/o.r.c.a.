@@ -1,7 +1,7 @@
 "use server"
 
 import { createClient } from "@/lib/supabase/server"
-import { getInstallerEmail, setInstallerEmail } from "@/lib/store/identity"
+import { getInstallerEmail } from "@/lib/store/identity"
 import { revalidatePath } from "next/cache"
 
 export interface StoreApp {
@@ -104,10 +104,12 @@ export async function getStoreAppBySlug(slug: string): Promise<{
 
 export async function installApp(formData: FormData) {
   const appId = String(formData.get("app_id") ?? "")
-  const emailRaw = String(formData.get("email") ?? "").trim().toLowerCase()
-  const installer = (await getInstallerEmail()) || emailRaw
-  if (!installer || !installer.includes("@")) {
-    return { error: "Enter your email to install." }
+  // Identity is derived from the authenticated session — never from a
+  // form field. A self-asserted email previously let anyone install on
+  // anyone else's behalf.
+  const installer = await getInstallerEmail()
+  if (!installer) {
+    return { error: "Sign in to install." }
   }
   if (!appId) return { error: "Missing app" }
 
@@ -119,10 +121,6 @@ export async function installApp(formData: FormData) {
     .maybeSingle()
   if (!app || (app as { status: string }).status !== "live") {
     return { error: "App is not available" }
-  }
-
-  if (emailRaw && emailRaw !== (await getInstallerEmail())) {
-    await setInstallerEmail(emailRaw)
   }
 
   const { data: existing } = await supabase
